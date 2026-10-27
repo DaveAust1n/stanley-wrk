@@ -1,5 +1,5 @@
 // Campaign content is intentionally illustrative. Replace only with organiser-approved details.
-export const campaign = { name:'METRO MOTORS', status:'CAMPAIGN PREVIEW', endDate:'', support:'Support contact to be provided', organiser:'Organiser to be confirmed', charge:'Not yet confirmed', purpose:'Charge purpose to be confirmed', currency:'', amount:'', crypto:'', network:'', wallet:'', confirmations:0, videoIds:['',''] };
+export const campaign = { name:'METRO MOTORS', status:'CAMPAIGN PREVIEW', endDate:'', support:'Support contact to be provided', organiser:'Organiser to be confirmed', charge:'Not yet confirmed', purpose:'Charge purpose to be confirmed', currency:'', amount:'', crypto:'', network:'', wallet:'', confirmations:0, explorerTxBase:'', termsUrl:'', privacyUrl:'', social:{instagram:'', facebook:'', youtube:''}, accountImage:'', videoIds:['',''] };
 export type Vehicle = { id:string; name:string; year:string; label:string; description:string; range:string; power:string; type:string; image:string; delivery:string; time:string };
 export const vehicles: Vehicle[] = [
  {id:'urban',name:'Metro Urban',year:'Model year TBC',label:'POPULAR',description:'A refined everyday drive, designed for the journey ahead.',range:'Range TBC',power:'Power TBC',type:'Sedan',image:'',delivery:'Locations to be confirmed',time:'To be confirmed'},
@@ -21,3 +21,5 @@ export const vehicleReviews = [
  { id:'XTeWKmlNmN8', title:'Tesla Model 3 review', creator:'Edmunds Cars', url:'https://www.youtube.com/watch?v=XTeWKmlNmN8' },
  { id:'XDkzm_LR0Co', title:'Tesla Cybertruck review', creator:'Doug DeMuro', url:'https://www.youtube.com/watch?v=XDkzm_LR0Co' }
 ];
+
+export const claimStatuses = ['Claim submitted','Under review','Approved','Awaiting payment','Payment confirmed','Preparing for delivery','Dispatched','Delivered'];
