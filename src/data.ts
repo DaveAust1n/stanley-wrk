@@ -16,3 +16,8 @@ export const sampleReviews = [
  {name:'Daniel', message:'The claim steps were clear and simple.'},
  {name:'Amara', message:'The design looks clean on my phone.'}
 ];
+
+export const vehicleReviews = [
+ { id:'XTeWKmlNmN8', title:'Tesla Model 3 review', creator:'Edmunds Cars', url:'https://www.youtube.com/watch?v=XTeWKmlNmN8' },
+ { id:'XDkzm_LR0Co', title:'Tesla Cybertruck review', creator:'Doug DeMuro', url:'https://www.youtube.com/watch?v=XDkzm_LR0Co' }
+];
