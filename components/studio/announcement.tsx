@@ -1,0 +1,12 @@
+'use client';
+import {useEffect,useRef,useState,type CSSProperties} from 'react';
+import {popupSettings,type PopupSettings} from '../../lib/popup';
+export default function Announcement({config,previewKey=0,editor=false}:{config?:Partial<PopupSettings>;previewKey?:number;editor?:boolean}){
+ const p=popupSettings(config);const [visible,setVisible]=useState(false);const [closing,setClosing]=useState(false);const remaining=useRef(0);const started=useRef(0);const closeTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);const hideTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
+ const dismiss=()=>{clearTimeout(closeTimer.current);setClosing(true);hideTimer.current=setTimeout(()=>setVisible(false),180)};
+ useEffect(()=>{clearTimeout(closeTimer.current);clearTimeout(hideTimer.current);setVisible(false);setClosing(false);if(editor&&!previewKey||!editor&&(!p.enabled||!p.title.trim()&&!p.message.trim()))return;const show=setTimeout(()=>{setVisible(true);setClosing(false);remaining.current=p.duration*1000;started.current=Date.now();if(p.duration)closeTimer.current=setTimeout(dismiss,remaining.current)},editor?0:p.delay*1000);return()=>{clearTimeout(show);clearTimeout(closeTimer.current);clearTimeout(hideTimer.current)}},[p.enabled,p.delay,p.duration,previewKey,editor]);
+ if(!visible)return null;
+ const pause=()=>{if(p.duration){clearTimeout(closeTimer.current);remaining.current=Math.max(0,remaining.current-(Date.now()-started.current))}};
+ const resume=()=>{if(p.duration&&!closing){started.current=Date.now();closeTimer.current=setTimeout(dismiss,remaining.current)}};
+ return <aside role="status" aria-live="polite" aria-atomic="true" className="announcement-popup" data-position={p.position} data-animation={p.animation} data-closing={closing} style={{background:p.background,color:p.textColor,'--popup-duration':`${p.duration}s`} as CSSProperties} onMouseEnter={pause} onMouseLeave={resume}><span className="announcement-icon" aria-hidden="true" style={{color:p.accent,background:p.accent+'14'}}>◎</span><div className="announcement-copy"><span className="announcement-label">Sample preview</span>{(p.title||editor)&&<strong>{p.title||(editor?'Your popup title':'')}</strong>}<p>{p.message||(editor?'Your message will appear here.':'')}</p></div><button type="button" className="announcement-close" aria-label="Dismiss announcement" onClick={dismiss}>×</button>{p.duration>0&&<span className="announcement-progress" aria-hidden="true" style={{background:p.accent}}/>}</aside>
+}
