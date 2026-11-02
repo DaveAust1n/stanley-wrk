@@ -10,6 +10,9 @@ A visual website editor connected to Supabase, built with Next.js, React and Tai
 - Desktop/tablet/mobile previews and separate mobile style overrides.
 - Editable announcement popups, with fade/slide/zoom effects, placement and timing controls. Test popups retain their Sample preview label.
 - Durable drafts, transactional publishing, version history, restoration and HTML/JSON export.
+- Midnight Cherry Red and Quicksilver styling across the editor and saved site.
+- Visitor language switching, editable translations, English fallback and right-to-left Arabic. French and Spanish sample labels are included.
+- Optional automatic translation of missing text using the desktop Chrome Translator API; browser/language support varies. The first use may download language files. Manual translations work in other browsers.
 - Private image/video uploads to Supabase Storage.
 
 ## Run locally
@@ -31,7 +34,7 @@ npm run build
 ## Routes
 
 - `/`: editor
-- `/site`: published website
+- `/site`: published website (for example, `/site?lang=fr`)
 - `/api/document`: saved pages, publishing and versions
 - `/api/assets`: uploads and media delivery
 - `/api/backend`: backend health check

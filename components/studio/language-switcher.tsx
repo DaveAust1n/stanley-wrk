@@ -1,0 +1,3 @@
+'use client';
+import {languageInfo,type Locale} from '../../lib/languages';
+export default function LanguageSwitcher({languages,selected,onChange}:{languages:Locale[];selected:string;onChange?:(locale:Locale)=>void}){if(languages.length<2)return null;return <div className="site-language-switcher" dir="ltr"><span aria-hidden="true">◎</span><select aria-label="Website language" value={selected} onChange={event=>{const locale=event.target.value as Locale;if(onChange){onChange(locale);return;}const url=new URL(window.location.href);url.searchParams.set('lang',locale);window.location.assign(url.href);}}>{languages.map(code=><option key={code} value={code}>{languageInfo(code).native}</option>)}</select><span aria-hidden="true">⌄</span></div>}
