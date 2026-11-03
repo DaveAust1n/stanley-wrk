@@ -1,6 +1,7 @@
 import type {TranslationBundle} from './languages';
+import type {MotionSettings} from './motion';
 import type {PopupSettings} from './popup';
-export type Block={id:string;name:string;type:'box'|'text'|'image'|'video'|'link';text?:string;src?:string;href?:string;tag?:string;style:Record<string,string|number>;mobile?:Record<string,string|number>;children?:Block[];hidden?:boolean};
+export type Block={motion?:MotionSettings;id:string;name:string;type:'box'|'text'|'image'|'video'|'link';text?:string;src?:string;href?:string;tag?:string;style:Record<string,string|number>;mobile?:Record<string,string|number>;children?:Block[];hidden?:boolean};
 export type SiteDocument={title:string;description:string;nodes:Block[];popup?:PopupSettings;languages?:string[];translations?:Record<string,TranslationBundle>;designVersion?:number;i18nVersion?:number};
 let seq=0;
 const b=(type:Block['type'],name:string,style:Block['style']={},extra:Partial<Block>={}):Block=>({id:`element-${++seq}`,type,name,style,...extra});
