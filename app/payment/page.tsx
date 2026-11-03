@@ -1,11 +1,10 @@
-import {checkoutLocale,checkoutText,localeHref} from '../../lib/checkout-languages';
-import type {Metadata} from 'next';
-import Link from 'next/link';
-import {ArrowRight,Wallet} from 'lucide-react';
-import CheckoutShell from '../../components/checkout/shell';
-import styles from '../../components/checkout/flow.module.css';
-export async function generateMetadata({searchParams}:{searchParams:Promise<{lang?:string|string[]}>}):Promise<Metadata>{const t=checkoutText(checkoutLocale((await searchParams).lang));return{title:t('payment'),description:t('payIntro'),robots:{index:false,follow:false}};}
-export default async function PaymentPage({searchParams}:{searchParams:Promise<{lang?:string|string[]}>}){
- const locale=checkoutLocale((await searchParams).lang);const t=checkoutText(locale);
- return <CheckoutShell active="payment" locale={locale}><div className={styles.eyebrow}>{t('next')}</div><h1 className={styles.title}>{t('payTitle')}</h1><p className={styles.subtitle}>{t('payIntro')}</p><div className={styles.grid}><section className={styles.card} aria-labelledby="payment-heading"><div className={styles.cardTop}><div><h2 id="payment-heading">{t('details')}</h2><p>{t('crypto')}</p></div><span className={styles.badge}>{t('unavailable')}</span></div><dl className={styles.rows}><div className={styles.row}><dt>{t('amount')}</dt><dd>{t('unset')}</dd></div><div className={styles.row}><dt>{t('currency')}</dt><dd>{t('unset')}</dd></div><div className={styles.row}><dt>{t('network')}</dt><dd>{t('unset')}</dd></div><div className={styles.row}><dt>{t('address')}</dt><dd>{t('unset')}</dd></div></dl><div className={styles.notice} id="payment-notice">{t('notice')}</div><button className={styles.primary} disabled aria-describedby="payment-notice"><Wallet size={16}/> {t('disabled')}</button><Link href={localeHref('/track',locale)} className={styles.secondary}>{t('already')} <ArrowRight size={14}/></Link></section><aside className={`${styles.card} ${styles.dark}`}><h2>{t('nextTitle')}</h2><p>{t('nextIntro')}</p><ol className={styles.steps}><li className={styles.step}><span className={styles.number}>01</span><div><strong>{t('step1')}</strong><p>{t('step1Text')}</p></div></li><li className={styles.step}><span className={styles.number}>02</span><div><strong>{t('step2')}</strong><p>{t('step2Text')}</p></div></li><li className={styles.step}><span className={styles.number}>03</span><div><strong>{t('step3')}</strong><p>{t('step3Text')}</p></div></li></ol></aside></div></CheckoutShell>;
+import TemplatePageView from '../../components/checkout/template-page';
+import {checkoutLocale} from '../../lib/checkout-languages';
+import {loadDocument} from '../../lib/studio-storage';
+export const dynamic='force-dynamic';
+export const metadata={title:'Checkout template',robots:{index:false,follow:false}};
+export default async function Page({searchParams}:{searchParams:Promise<{lang?:string|string[]}>}){
+ const locale=checkoutLocale((await searchParams).lang);
+ const {document}=await loadDocument('published.json');
+ return <TemplatePageView page="payment" settings={document?.pageTemplates} locale={locale}/>;
 }

@@ -1,5 +1,5 @@
 import type {Block,SiteDocument} from './document';
-import {connectSectionLinks} from './navigation';
+import {connectSectionLinks,connectTemplatePages} from './navigation';
 import {enabledLanguages,seedLanguage,defaultPublicLanguages} from './languages';
 const replacements:Record<string,string>={'#df252a':'#5a1024','#cf252c':'#5a1024','#cc242b':'#5a1024','#c42c33':'#741d34','#0e121e':'#210b13','#111723':'#19191d','#121723':'#19191d','#fff0f0':'#e9e9ec','#edf4ff':'#e1e2e6','#f5f6f8':'#f1f1f3','#edfcf1':'#d9dbdf','#fff2f2':'#eee5e8','#f2d5d6':'#d9bdc6','#fff4f3':'#f5f5f7','#ffe4e5':'#d4d6dc','#f8fafc':'#f9f9fa','#e8edf3':'#d6d8df','#161d2b':'#2b1721','#171d2c':'#2f1822','#2a3141':'#4d2e3c','#252d40':'#4d2e3c'};
 const recolor=(v:string|number)=>typeof v==='string'?v.replace(/#[a-f0-9]{6}/gi,c=>replacements[c.toLowerCase()]||c):v;
@@ -65,6 +65,7 @@ function reserveLogoSpace(doc:SiteDocument){
 /** Keep the existing calls to action connected, including saved editor content. */
 export function connectOrderPages(doc:SiteDocument){
  connectSectionLinks(doc.nodes);
+ connectTemplatePages(doc);
  const walk=(nodes:Block[])=>{for(const n of nodes){
   if(n.type==='link'){
    const label=(n.text||n.name).replace(/[→↗]/g,'').trim().toLowerCase().replace(/\s+/g,' ');

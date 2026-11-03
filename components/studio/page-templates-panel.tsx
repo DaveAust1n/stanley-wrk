@@ -1,0 +1,7 @@
+'use client';
+import {templateCopy,templateFields,type PageTemplates,type TemplatePage} from '../../lib/page-templates';
+export default function PageTemplatesPanel({settings,page,locale,onPage,onChange}:{settings?:PageTemplates;page:TemplatePage;locale:string;onPage:(page:TemplatePage)=>void;onChange:(settings:PageTemplates)=>void}){
+ const copy=templateCopy(settings,page,locale);
+ const labels={title:'Page heading',intro:'Introduction',heading:'Main card heading',body:'Main card text',sideTitle:'Side card heading',sideBody:'Side card text'};
+ return <div className="panel-content"><label className="field"><span>Page template</span><select value={page} onChange={e=>onPage(e.target.value as TemplatePage)}><option value="payment">Checkout</option><option value="track">Tracking</option></select></label><p className="muted">Blank text stays blank. Edit this language, save your draft, then publish. The preview uses these draft values.</p>{templateFields.map(key=><label className="field" key={key}><span>{labels[key]}</span><textarea maxLength={2000} rows={key==='title'||key==='heading'||key==='sideTitle'?2:3} value={copy[key]} onChange={e=>onChange({...settings,[page]:{...settings?.[page],[locale]:{...settings?.[page]?.[locale],[key]:e.target.value}}})}/></label>)}<a className="full-button" href={'/'+(page==='track'?'track':'payment')+'?lang='+encodeURIComponent(locale)} target="_blank" rel="noreferrer">Open published page ↗</a></div>;
+}

@@ -47,3 +47,9 @@ The Supabase project is `olnkypwqreonuweulylk`. Documents use `metro_studio_docu
 The existing Vercel project's deployment protection remains the access boundary for this private editor and its API. Keep that protection enabled. A public launch with a private editor requires separate application-level authentication/authorisation before removing deployment protection or adding an unprotected custom domain.
 
 The editor shares the existing Supabase page records with the original private preview. Publishing in either deployment updates that same saved website. Existing files and source versions are retained in Git history; do not overwrite the Supabase schema or redeploy its function without preserving active deployment-token digests.
+
+## Editable page templates
+
+- Home navigation keeps section links for Overview, Stories, Process and Collection. Explore now opens `/order`. Collection cards pass their vehicle ID to that form.
+- `/order` contains the vehicle/details template and summary; Continue opens the `/payment` layout. `/track` contains the tracking layout. No order or payment is submitted by these templates.
+- In `/editor`, use **Editing page** to switch between Home, Vehicle form & summary, Checkout and Tracking. Vehicles & prices controls the form and summary wording; Page templates controls checkout/tracking text. Save draft keeps edits private; Publish updates the pages. Blank content stays blank.
