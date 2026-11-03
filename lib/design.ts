@@ -66,7 +66,7 @@ export function connectOrderPages(doc:SiteDocument){
  const walk=(nodes:Block[])=>{for(const n of nodes){
   if(n.type==='link'){
    const label=(n.text||n.name).replace(/[→↗]/g,'').trim().toLowerCase().replace(/\s+/g,' ');
-   if(label==='claim now')n.href='/payment';
+   if(label==='claim now')n.href='/order';
    if(['track claim','track order','track your order'].includes(label))n.href='/track';
   }
   if(n.children)walk(n.children);

@@ -26,7 +26,7 @@ export const isPlaceholder=(text:string)=>/^(Lorem ipsum|Dolor sit amet|Consecte
 export function translatableBlocks(doc:SiteDocument){return blocks(doc.nodes).filter(n=>typeof n.text==='string'&&n.text.trim()&&!isPlaceholder(n.text));}
 
 function localizedHref(href:string|undefined,locale:string){
- if(!href||!/^\/(?:site|payment|track)(?:[?#]|$)/.test(href))return href;
+ if(!href||!/^\/(?:site|payment|track|order)(?:[?#]|$)/.test(href))return href;
  const url=new URL(href,'https://local.invalid');url.searchParams.set('lang',locale);
  return url.pathname+url.search+url.hash;
 }
