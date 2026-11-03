@@ -33,7 +33,8 @@ npm run build
 
 ## Routes
 
-- `/`: editor
+- `/`: published website
+- `/editor`: visual editor (existing deployment protection remains in force)
 - `/site`: published website (for example, `/site?lang=fr`)
 - `/api/document`: saved pages, publishing and versions
 - `/api/assets`: uploads and media delivery
