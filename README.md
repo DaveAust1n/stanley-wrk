@@ -103,3 +103,13 @@ The two original empty video placeholders render as owner-managed comment feeds.
 Save draft and Publish retain their existing behavior. Likes and date labels are editorial values supplied by the owner; this is not a live visitor-posting or reaction service. No activity, people or timestamps are generated. The same renderer is used for editor previews, the published page and HTML export. **Add elements → Comment feed** inserts another section.
 
 Validation: `node --test scripts/verify-comments.mjs`, `npm run check`, `npm run build`, then `node scripts/verify-comments-integration.mjs` for draft/save/publish verification against a separate in-memory backend.
+
+## Live social embeds
+
+Open `/editor?panel=social` or **Social links**. Paste a public URL into any of the three cards; the canvas updates immediately. **Preview** enables player interaction. Save draft stores edits privately; Publish updates the website. The original card link is retained and synchronized. Existing comments, payment flows and other page content remain unchanged.
+
+Supported content: YouTube videos/Shorts/live-video URLs/playlists, public Instagram posts/Reels/embeddable profiles, TikTok full video URLs, public Facebook posts/Reels and Threads posts. YouTube channel links and other unsupported social URL forms retain an Open original link. Generic HTTPS websites are shown in a sandboxed frame with an external fallback; sites can prohibit embedding through their own security headers. No client credentials or arbitrary embed-code pasting are needed.
+
+Meta embeds use the fixed official tokenless oEmbed endpoints plus the relevant official frontend script, inside a sandbox without same-origin access. Instagram has a standard embed-script fallback when metadata is unavailable. No arbitrary server-side URL fetching occurs. Exported HTML uses this deployment's public embed endpoint for Meta content, so it requires the deployed service to remain available. Profile embeds show the content the platform exposes; this does not scrape an account's entire feed.
+
+Validation: `node --test scripts/verify-social.mjs`, `npm run check`, `npm run build`, `node scripts/verify-comments-integration.mjs`. No test links or content are written to production documents.
