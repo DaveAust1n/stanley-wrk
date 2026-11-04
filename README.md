@@ -51,14 +51,14 @@ The editor shares the existing Supabase page records with the original private p
 ## Editable page templates
 
 - Home navigation keeps section links for Overview, Stories, Process and Collection. Explore now opens `/order`. Collection cards pass their vehicle ID to that form.
-- `/order` contains the vehicle/details template and summary; Continue opens the `/payment` layout. `/track` contains the tracking layout. No order or payment is submitted by these templates.
+- `/order` creates an order after reviewing published vehicle and delivery prices; Continue opens its `/payment?order=ORD-…` checkout. `/track` looks up actual order/payment/delivery status. Embedded editor previews never submit orders or payments.
 - In `/editor`, use **Editing page** to switch between Home, Vehicle form & summary, Checkout and Tracking. Vehicles & prices controls the form and summary wording; Page templates controls checkout/tracking text. Save draft keeps edits private; Publish updates the pages. Blank content stays blank.
 
 ## Payment administration
 
 Open `/admin`, or Website editor → Site settings → Payment administration. Sign in with an admin code already accepted by `checkout-backend`. The code is checked by the backend and stored only inside an encrypted, HttpOnly, SameSite=Strict session cookie that expires after 30 minutes. Sign out clears it. No admin codes are embedded in the browser bundle.
 
-The workspace filters submitted, awaiting, confirmed, rejected and expired payments, searches order/customer/transaction details, and shows the receiving wallet, expected amount and quote times. Confirmation requires an explicit receipt-verification acknowledgement; rejection requires a reason. Paid orders allow delivery-status updates. This is manual review; the screen does not verify blockchain receipt automatically. Customer checkout remains a separate integration.
+The workspace filters submitted, awaiting, confirmed, rejected and expired payments, searches order/customer/transaction details, and shows the receiving wallet, expected amount and quote times. Confirmation requires an explicit receipt-verification acknowledgement; rejection requires a reason. Paid orders allow delivery-status updates. This is manual review; the screen does not verify blockchain receipt automatically. Customer checkout submits transactions to this review queue; only an administrator verifying actual receipt may confirm payment.
 
 Server environment: `CHECKOUT_BACKEND_URL`, `CHECKOUT_BACKEND_TOKEN`, `ADMIN_SESSION_SECRET` (at least 32 random characters). The server token must match an allowed digest in the deployed Edge Function. Existing backend tokens and human admin-code digests must be retained during deployment. Keep Vercel deployment protection enabled.
 
@@ -76,3 +76,22 @@ State-changing requests require a matching Origin. Responses are never cached. E
 Validation: `node --experimental-strip-types --test scripts/verify-admin.mjs`, `npm run check`, `npm run build`, then `node scripts/verify-admin-integration.mjs` (isolated mock backend only).
 
 The Edge Function’s existing credential verifiers remain on Supabase. `scripts/fixtures/checkout-backend.txt` is the deployed code snapshot with all allowed digests removed, used only for isolated authorization tests. Preserve the live allowlists when updating the function; do not deploy the test fixture.
+
+## Customer checkout
+
+Customers select a vehicle, enter delivery details, review the total and save their order. The server reads **published** editor settings to compute each USD line item; it rejects missing prices, altered client amounts and stale totals. A stale total returns updated settings for a second review. Set vehicle prices, the base delivery fee and each available delivery option in **Vehicles & prices**, then Publish. No placeholder prices are charged.
+
+Payment methods come from active backend wallets. The customer requests a quote, sees the backend amount, wallet, network, exchange rate, expiry and DOGE payment QR, then submits a transaction hash. Submission means pending manual review, never confirmed receipt. Expired quotes hide payment instructions; a hash for an already-sent transaction can still be submitted for review. Paid orders expose their tracking reference. Tracking shows only limited order/payment/delivery status, without customer contact or address details.
+
+Server environment additionally requires `CUSTOMER_SESSION_SECRET`, a separate random secret of at least 32 characters. Private payment instructions require an encrypted HttpOnly, SameSite=Strict cookie belonging to the browser that created the order, valid for 24 hours and keeping the latest 12 orders. Order/tracking references work on the public tracking form across devices. The server bridge token and Supabase credentials never enter client bundles. Same-browser retries with the same request ID and unchanged details reuse the latest saved order; this is not database-level idempotency across concurrent requests.
+
+Customer endpoints:
+
+- `GET /api/checkout/status`: backend connectivity and whether payable prices have been published.
+- `POST /api/checkout/orders`: selected IDs, customer details, locale, request ID and expected total; server supplies trusted prices and names.
+- `GET /api/checkout/orders/{code}`: requires the creating browser's sealed session.
+- `POST /api/checkout/orders/{code}/payments`: currency/network quote request.
+- `POST /api/checkout/orders/{code}/payments/{id}/tx`: transaction hash for manual review.
+- `GET /api/checkout/track/{ORD-or-TRK-reference}`: limited public tracking result.
+
+Validation: `node --test scripts/verify-customer.mjs`, `npm run check`, `npm run build`, then `node scripts/verify-customer-integration.mjs`. The integration test uses a separate in-memory backend and does not create or approve production orders. `CUSTOMER_BROWSER_TEST=1 node scripts/verify-customer-integration.mjs` leaves the isolated test server running on port 3000 for local browser checks. Stop it after testing. Confirm live quote availability and actual receipt with a controlled transaction after business prices are published.

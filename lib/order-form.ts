@@ -21,7 +21,7 @@ export function orderCopy(settings:OrderFormSettings,locale:string):OrderCopy{
 }
 export function defaultOrderForm():OrderFormSettings{return{vehicles:Array.from({length:9},(_,i)=>({id:`vehicle-${i+1}`,name:`Vehicle ${String(i+1).padStart(2,'0')}`,description:'',price:null})),deliveryFee:null,deliveryOptions:['standard','express','premium'].map(id=>({id,name:'',description:'',estimate:'',price:null}))};}
 export function orderSettings(value?:OrderFormSettings):OrderFormSettings{return value&&validOrderForm(value)?value:defaultOrderForm();}
-export function orderTotal(vehicle:number|null,fee:number|null,delivery:number|null){return [vehicle,fee,delivery].some(v=>v===null)?null:Math.round((vehicle!+fee!+delivery!)*100)/100;}
+export function orderTotal(vehicle:number|null,fee:number|null,delivery:number|null){return [vehicle,fee,delivery].some(v=>v===null)?null:(Math.round(vehicle!*100)+Math.round(fee!*100)+Math.round(delivery!*100))/100;}
 export function orderPrice(value:number|null,locale:string,pending:string){return value===null?pending:new Intl.NumberFormat(locale,{style:'currency',currency:'USD'}).format(value);}
 const amount=(value:unknown)=>value===null||typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=100000000;
 const str=(v:unknown,max=200)=>typeof v==='string'&&v.length<=max;
