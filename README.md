@@ -95,3 +95,11 @@ Customer endpoints:
 - `GET /api/checkout/track/{ORD-or-TRK-reference}`: limited public tracking result.
 
 Validation: `node --test scripts/verify-customer.mjs`, `npm run check`, `npm run build`, then `node scripts/verify-customer-integration.mjs`. The integration test uses a separate in-memory backend and does not create or approve production orders. `CUSTOMER_BROWSER_TEST=1 node scripts/verify-customer-integration.mjs` leaves the isolated test server running on port 3000 for local browser checks. Stop it after testing. Confirm live quote availability and actual receipt with a controlled transaction after business prices are published.
+
+## Comment feeds
+
+The two original empty video placeholders render as owner-managed comment feeds. Existing videos with uploaded/linked sources stay intact. Open `/editor?panel=comments` or the **Comments** tool, select a section and add entries. Each entry supports a circular profile photo (upload or URL), name, text, recorded like count, optional date/time label and visibility. Reorder or remove entries with the card controls. Photos fall back to initials. Empty names/messages are excluded from the published feed. Content is shared across languages, as entered.
+
+Save draft and Publish retain their existing behavior. Likes and date labels are editorial values supplied by the owner; this is not a live visitor-posting or reaction service. No activity, people or timestamps are generated. The same renderer is used for editor previews, the published page and HTML export. **Add elements → Comment feed** inserts another section.
+
+Validation: `node --test scripts/verify-comments.mjs`, `npm run check`, `npm run build`, then `node scripts/verify-comments-integration.mjs` for draft/save/publish verification against a separate in-memory backend.
