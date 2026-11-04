@@ -1,0 +1,276 @@
+// Server-to-server bridge for the crypto checkout of this Metro Visual Studio project.
+// Payments are verified MANUALLY by an admin: nothing here checks the blockchain.
+// The Next.js server holds the token; only its SHA-256 digest is stored here.
+// Admin actions additionally need the admin password; only its digest is stored here.
+// Customers never call this function directly (the Next.js API routes do, with the token).
+const TOKEN_HASHES = [];
+const ADMIN_HASHES = [];
+const SITE_ID = "appgprj_6ae8a63c83d48191aca6901f3ac533b3";
+const BASE = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+class HttpError extends Error {
+  status: number;
+  code: string;
+  constructor(status: number, code: string) { super(code); this.status = status; this.code = code; }
+}
+
+async function sha256(value: string) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))), n => n.toString(16).padStart(2, "0")).join("");
+}
+function sameDigest(digest: string, allowed: string[]) {
+  return allowed.some(expected => {
+    let diff = digest.length ^ expected.length;
+    for (let i = 0; i < digest.length; i++) diff |= digest.charCodeAt(i) ^ expected.charCodeAt(i);
+    return diff === 0;
+  });
+}
+
+// ---- database -------------------------------------------------------------
+const ERROR_STATUS: Record<string, number> = {
+  order_not_found: 404, payment_not_found: 404,
+  order_not_payable: 409, payment_not_open: 409, payment_not_submitted: 409, tx_already_used: 409,
+  order_already_paid: 409, order_not_paid: 409,
+  unsupported_method: 400, invalid_status: 400, rate_unavailable: 503, too_many_orders: 429,
+};
+async function rpc(name: string, args: Record<string, unknown>) {
+  const r = await fetch(`${BASE}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: { apikey: SERVICE_KEY, Authorization: "Bearer " + SERVICE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+  });
+  const text = await r.text();
+  if (!r.ok) {
+    let message = "";
+    try { message = JSON.parse(text).message || ""; } catch { /* ignore */ }
+    if (ERROR_STATUS[message]) throw new HttpError(ERROR_STATUS[message], message);
+    console.error("rpc failed", name, r.status, message.slice(0, 120));
+    throw new HttpError(500, "backend_error");
+  }
+  return text ? JSON.parse(text) : null;
+}
+type Wallet = { is_stable: boolean; address: string };
+async function activeWallet(currency: string, network: string): Promise<Wallet> {
+  const q = new URLSearchParams({ currency: "eq." + currency, network: "eq." + network, is_active: "eq.true", select: "is_stable,address", limit: "1" });
+  const r = await fetch(`${BASE}/rest/v1/checkout_wallets?${q}`, { headers: { apikey: SERVICE_KEY, Authorization: "Bearer " + SERVICE_KEY } });
+  if (!r.ok) throw new HttpError(500, "backend_error");
+  const rows = await r.json();
+  if (!rows.length) throw new HttpError(400, "unsupported_method");
+  return rows[0];
+}
+
+// ---- rate limiting (shared, database-backed) -------------------------------------
+async function limit(scope: string, id: string, max: number, windowSeconds: number) {
+  const key = scope + ":" + (await sha256(id)).slice(0, 32);
+  const allowed = await rpc("checkout_rate_hit", { p_key: key, p_limit: max, p_window_seconds: windowSeconds });
+  if (allowed !== true) throw new HttpError(429, "rate_limited");
+}
+
+// ---- receiving-wallet sanity check -------------------------------------------------
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+async function validBase58Check(address: string, versions: number[]) {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{26,35}$/.test(address)) return false;
+  let n = 0n;
+  for (const ch of address) n = n * 58n + BigInt(B58.indexOf(ch));
+  const bytes = new Uint8Array(25);
+  for (let i = 24; i >= 0; i--) { bytes[i] = Number(n & 0xffn); n >>= 8n; }
+  if (n !== 0n) return false;
+  const once = await crypto.subtle.digest("SHA-256", bytes.slice(0, 21));
+  const twice = new Uint8Array(await crypto.subtle.digest("SHA-256", once));
+  return versions.includes(bytes[0]) && [0, 1, 2, 3].every(i => twice[i] === bytes[21 + i]);
+}
+async function checkWallet(currency: string, wallet: Wallet) {
+  // Dogecoin: version byte 0x1e (P2PKH, "D...") or 0x16 (P2SH) plus a valid checksum.
+  const ok = currency === "DOGE" ? await validBase58Check(wallet.address, [0x1e, 0x16]) : /^[A-Za-z0-9]{20,120}$/.test(wallet.address);
+  if (!ok) { console.error("wallet misconfigured for", currency); throw new HttpError(503, "wallet_misconfigured"); }
+}
+
+// ---- live exchange rate (USD per 1 coin) ------------------------------------
+const COINS: Record<string, { coinbase: string; kraken: string; gecko: string }> = {
+  DOGE: { coinbase: "DOGE", kraken: "XDGUSD", gecko: "dogecoin" },
+  BTC: { coinbase: "BTC", kraken: "XBTUSD", gecko: "bitcoin" },
+  ETH: { coinbase: "ETH", kraken: "ETHUSD", gecko: "ethereum" },
+  LTC: { coinbase: "LTC", kraken: "LTCUSD", gecko: "litecoin" },
+};
+async function getJson(url: string) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { accept: "application/json" } });
+  if (!r.ok) throw new Error("status " + r.status);
+  return r.json();
+}
+async function liveRate(currency: string): Promise<number> {
+  const c = COINS[currency];
+  if (!c) throw new HttpError(503, "rate_unavailable");
+  const results = await Promise.allSettled([
+    getJson(`https://api.coinbase.com/v2/prices/${c.coinbase}-USD/spot`).then(d => Number(d.data.amount)),
+    getJson(`https://api.kraken.com/0/public/Ticker?pair=${c.kraken}`).then(d => Number((Object.values(d.result)[0] as { c: string[] }).c[0])),
+    getJson(`https://api.coingecko.com/api/v3/simple/price?ids=${c.gecko}&vs_currencies=usd`).then(d => Number(d[c.gecko].usd)),
+  ]);
+  const rates = results.flatMap(r => r.status === "fulfilled" && Number.isFinite(r.value) && r.value > 0 ? [r.value] : []).sort((a, b) => a - b);
+  // Two independent sources must agree within 5%, otherwise refuse to quote rather than guess.
+  if (rates.length < 2 || rates[rates.length - 1] / rates[0] > 1.05) {
+    console.error("rate sources insufficient/disagree", currency, rates.length);
+    throw new HttpError(503, "rate_unavailable");
+  }
+  const mid = Math.floor(rates.length / 2);
+  const median = rates.length % 2 ? rates[mid] : (rates[mid - 1] + rates[mid]) / 2;
+  return Math.round(median * 1e10) / 1e10;
+}
+
+// ---- validation ---------------------------------------------------------------
+const ORDER_CODE = /^ORD-[A-F0-9]{12}$/;
+const ANY_CODE = /^(ORD|TRK)-[A-F0-9]{12}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const ID = /^[a-zA-Z0-9_-]{1,100}$/;
+const FULFILMENT = ["processing", "preparing", "in_transit", "delivered"];
+const text = (v: unknown, min: number, max: number) => typeof v === "string" && v.trim().length >= min && v.trim().length <= max;
+const money = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100000000;
+function validTxHash(currency: string, network: string, hash: string) {
+  if (["DOGE", "BTC", "LTC"].includes(currency) || network === "TRC20") return /^[a-fA-F0-9]{64}$/.test(hash);
+  if (/^(ERC20|BEP20|POLYGON|ARBITRUM|OPTIMISM|BASE|AVAXC)$/.test(network) || currency === "ETH") return /^0x[a-fA-F0-9]{64}$/.test(hash);
+  return /^[A-Za-z0-9]{20,120}$/.test(hash);
+}
+async function body(req: Request) {
+  const raw = await req.text();
+  if (raw.length > 20000) throw new HttpError(413, "too_large");
+  try { const v = JSON.parse(raw || "{}"); if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>; } catch { /* fall through */ }
+  throw new HttpError(400, "invalid_json");
+}
+
+// ---- routes -------------------------------------------------------------------
+async function handle(req: Request, path: string, url: URL, ip: string): Promise<Response> {
+  const m = req.method;
+  let g: RegExpExecArray | null;
+
+  if (path === "/health" && m === "GET") { await rpc("checkout_track", { p_code: "ORD-000000000000" }); return json({ ok: true }); }
+
+  if (path === "/orders" && m === "POST") {
+    await limit("order", ip, 8, 3600);
+    const b = await body(req);
+    const c = (b.customer ?? {}) as Record<string, unknown>;
+    const ok = typeof b.vehicleId === "string" && ID.test(b.vehicleId) && typeof b.deliveryId === "string" && ID.test(b.deliveryId)
+      && text(b.vehicleName, 1, 200) && text(b.deliveryName, 1, 200)
+      && money(b.vehiclePrice) && money(b.deliveryFee) && money(b.deliveryPrice) && money(b.total) && (b.total as number) > 0
+      && Math.abs((b.vehiclePrice as number) + (b.deliveryFee as number) + (b.deliveryPrice as number) - (b.total as number)) < 0.01
+      && text(c.name, 1, 150) && typeof c.email === "string" && c.email.length <= 150 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email.trim())
+      && text(c.phone, 5, 40) && text(c.address, 3, 300) && text(c.city, 1, 150) && text(c.country, 1, 150)
+      && (c.postcode === undefined || c.postcode === "" || text(c.postcode, 1, 40))
+      && typeof b.locale === "string" && /^[a-z]{2,3}$/.test(b.locale);
+    if (!ok) throw new HttpError(400, "invalid_order");
+    const trim = (v: unknown) => String(v ?? "").trim();
+    const code = await rpc("checkout_create_order", {
+      p_site_id: SITE_ID, p_vehicle_id: b.vehicleId, p_vehicle_name: trim(b.vehicleName),
+      p_delivery_id: b.deliveryId, p_delivery_name: trim(b.deliveryName),
+      p_vehicle_price: b.vehiclePrice, p_delivery_fee: b.deliveryFee, p_delivery_price: b.deliveryPrice, p_total: b.total,
+      p_customer: { name: trim(c.name), email: trim(c.email).toLowerCase(), phone: trim(c.phone), address: trim(c.address), city: trim(c.city), country: trim(c.country), postcode: trim(c.postcode) },
+      p_locale: b.locale,
+    });
+    return json({ code }, 201);
+  }
+
+  if ((g = /^\/orders\/([^/]+)$/.exec(path)) && m === "GET") {
+    if (!ORDER_CODE.test(g[1])) throw new HttpError(404, "order_not_found");
+    await limit("orderget", ip, 120, 600);
+    const order = await rpc("checkout_get_order", { p_code: g[1] });
+    if (!order) throw new HttpError(404, "order_not_found");
+    return json(order);
+  }
+
+  if ((g = /^\/orders\/([^/]+)\/payments$/.exec(path)) && m === "POST") {
+    if (!ORDER_CODE.test(g[1])) throw new HttpError(404, "order_not_found");
+    await limit("quote", g[1], 12, 3600);
+    await limit("quoteip", ip, 40, 3600);
+    const b = await body(req);
+    if (typeof b.currency !== "string" || !/^[A-Za-z0-9]{2,10}$/.test(b.currency) || typeof b.network !== "string" || b.network.length > 30) throw new HttpError(400, "unsupported_method");
+    const currency = b.currency.toUpperCase();
+    const order = await rpc("checkout_get_order", { p_code: g[1] });
+    if (!order) throw new HttpError(404, "order_not_found");
+    if (order.status !== "awaiting_payment") throw new HttpError(409, "order_not_payable");
+    const wallet = await activeWallet(currency, b.network);
+    await checkWallet(currency, wallet);
+    // A quote that is still valid is returned as-is: same rate, same amount, same expiry.
+    const live = order.payments?.find((p: { status: string; currency: string; network: string }) => p.status === "awaiting" && p.currency === currency && p.network === b.network);
+    if (live) return json(live);
+    const rate = wallet.is_stable ? 1 : await liveRate(currency);
+    return json(await rpc("checkout_start_payment", { p_code: g[1], p_currency: currency, p_network: b.network, p_rate: rate }), 201);
+  }
+
+  if ((g = /^\/orders\/([^/]+)\/payments\/([^/]+)\/tx$/.exec(path)) && m === "POST") {
+    if (!ORDER_CODE.test(g[1]) || !UUID.test(g[2])) throw new HttpError(404, "payment_not_found");
+    await limit("tx", g[1], 10, 3600);
+    const b = await body(req);
+    const hash = typeof b.txHash === "string" ? b.txHash.trim() : "";
+    const order = await rpc("checkout_get_order", { p_code: g[1] });
+    const payment = order?.payments?.find((p: { id: string }) => p.id === g![2]);
+    if (!payment) throw new HttpError(404, "payment_not_found");
+    if (!validTxHash(payment.currency, payment.network, hash)) throw new HttpError(400, "invalid_tx_hash");
+    // Stored as "submitted" = awaiting manual verification. It never marks the order paid.
+    return json(await rpc("checkout_submit_tx", { p_code: g[1], p_payment_id: g[2], p_tx_hash: hash }));
+  }
+
+  if ((g = /^\/track\/([^/]+)$/.exec(path)) && m === "GET") {
+    const code = g[1].trim().toUpperCase();
+    if (!ANY_CODE.test(code)) throw new HttpError(404, "order_not_found");
+    await limit("track", ip, 30, 600);
+    const result = await rpc("checkout_track", { p_code: code });
+    if (!result) throw new HttpError(404, "order_not_found");
+    return json(result);
+  }
+
+  if (path.startsWith("/admin/")) {
+    await limit("admin", ip, 60, 900);
+    const key = req.headers.get("x-admin-key") || "";
+    if (!key || !sameDigest(await sha256(key), ADMIN_HASHES)) {
+      await new Promise(r => setTimeout(r, 600));
+      await limit("adminfail", ip, 10, 900);
+      throw new HttpError(401, "unauthorized");
+    }
+    if ((g = /^\/admin\/orders\/([^/]+)$/.exec(path)) && m === "GET") {
+      if (!ORDER_CODE.test(g[1])) throw new HttpError(404, "order_not_found");
+      const order = await rpc("checkout_get_order", { p_code: g[1] });
+      if (!order) throw new HttpError(404, "order_not_found");
+      const q = new URLSearchParams({code:"eq."+g[1],site_id:"eq."+SITE_ID,select:"fulfilment_status,fulfilment_note,customer_address,customer_city,customer_country,customer_postcode",limit:"1"});
+      const r = await fetch(BASE+"/rest/v1/checkout_orders?"+q,{headers:{apikey:SERVICE_KEY,Authorization:"Bearer "+SERVICE_KEY}});
+      if (!r.ok) throw new HttpError(500,"backend_error");
+      const rows = await r.json();
+      if (!rows.length) throw new HttpError(404,"order_not_found");
+      const saved=rows[0];
+      return json({...order,fulfilmentStatus:saved.fulfilment_status,fulfilmentNote:saved.fulfilment_note,customer:{address:saved.customer_address,city:saved.customer_city,country:saved.customer_country,postcode:saved.customer_postcode}});
+    }
+    if (path === "/admin/payments" && m === "GET") {
+      const status = url.searchParams.get("status") || "submitted";
+      if (!["awaiting", "submitted", "confirmed", "rejected", "expired"].includes(status)) throw new HttpError(400, "invalid_status");
+      return json({ payments: await rpc("checkout_admin_list", { p_status: status }) });
+    }
+    if ((g = /^\/admin\/payments\/([^/]+)\/(confirm|reject)$/.exec(path)) && m === "POST") {
+      if (!UUID.test(g[1])) throw new HttpError(404, "payment_not_found");
+      const b = await body(req);
+      const note = typeof b.note === "string" && b.note.trim() ? b.note.trim().slice(0, 500) : null;
+      return json(await rpc(g[2] === "confirm" ? "checkout_confirm_payment" : "checkout_reject_payment", { p_payment_id: g[1], p_note: note }));
+    }
+    if ((g = /^\/admin\/orders\/([^/]+)\/fulfilment$/.exec(path)) && m === "POST") {
+      if (!ORDER_CODE.test(g[1])) throw new HttpError(404, "order_not_found");
+      const b = await body(req);
+      if (typeof b.status !== "string" || !FULFILMENT.includes(b.status)) throw new HttpError(400, "invalid_status");
+      const note = typeof b.note === "string" && b.note.trim() ? b.note.trim().slice(0, 500) : null;
+      return json(await rpc("checkout_admin_set_fulfilment", { p_code: g[1], p_status: b.status, p_note: note }));
+    }
+  }
+  throw new HttpError(404, "not_found");
+}
+
+Deno.serve(async (req: Request) => {
+  try {
+    const token = req.headers.get("x-checkout-key") || "";
+    if (!token || !sameDigest(await sha256(token), TOKEN_HASHES)) return json({ error: "unauthorized" }, 401);
+    const url = new URL(req.url);
+    const path = (url.pathname.split("/checkout-backend")[1] || "/").replace(/(.)\/+$/, "$1");
+    // Set by our own Next.js server from the platform's client-IP header. Only hashed, never stored raw.
+    const ip = (req.headers.get("x-client-ip") || "unknown").slice(0, 64);
+    return await handle(req, path, url, ip);
+  } catch (e) {
+    if (e instanceof HttpError) return json({ error: e.code }, e.status);
+    console.error(e instanceof Error ? e.message : "unexpected");
+    return json({ error: "backend_error" }, 500);
+  }
+});

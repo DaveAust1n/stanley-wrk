@@ -53,3 +53,26 @@ The editor shares the existing Supabase page records with the original private p
 - Home navigation keeps section links for Overview, Stories, Process and Collection. Explore now opens `/order`. Collection cards pass their vehicle ID to that form.
 - `/order` contains the vehicle/details template and summary; Continue opens the `/payment` layout. `/track` contains the tracking layout. No order or payment is submitted by these templates.
 - In `/editor`, use **Editing page** to switch between Home, Vehicle form & summary, Checkout and Tracking. Vehicles & prices controls the form and summary wording; Page templates controls checkout/tracking text. Save draft keeps edits private; Publish updates the pages. Blank content stays blank.
+
+## Payment administration
+
+Open `/admin`, or Website editor → Site settings → Payment administration. Sign in with an admin code already accepted by `checkout-backend`. The code is checked by the backend and stored only inside an encrypted, HttpOnly, SameSite=Strict session cookie that expires after 30 minutes. Sign out clears it. No admin codes are embedded in the browser bundle.
+
+The workspace filters submitted, awaiting, confirmed, rejected and expired payments, searches order/customer/transaction details, and shows the receiving wallet, expected amount and quote times. Confirmation requires an explicit receipt-verification acknowledgement; rejection requires a reason. Paid orders allow delivery-status updates. This is manual review; the screen does not verify blockchain receipt automatically. Customer checkout remains a separate integration.
+
+Server environment: `CHECKOUT_BACKEND_URL`, `CHECKOUT_BACKEND_TOKEN`, `ADMIN_SESSION_SECRET` (at least 32 random characters). The server token must match an allowed digest in the deployed Edge Function. Existing backend tokens and human admin-code digests must be retained during deployment. Keep Vercel deployment protection enabled.
+
+Admin endpoints:
+- `POST /api/admin/session` — `{code}`; validates the existing code and establishes a session.
+- `DELETE /api/admin/session` — signs out.
+- `GET /api/admin/payments?status=submitted` — protected payment list.
+- `GET /api/admin/orders/ORD-…` — protected order and delivery details.
+- `POST /api/admin/payments/{id}/confirm` — `{verifiedReceipt:true,note?}`.
+- `POST /api/admin/payments/{id}/reject` — `{note}`.
+- `POST /api/admin/orders/{code}/fulfilment` — `{status,note?}`.
+
+State-changing requests require a matching Origin. Responses are never cached. Each backend call checks the admin code again, so removing its allowed digest revokes access even before cookie expiry. API routes proxy only the explicit allowlist.
+
+Validation: `node --experimental-strip-types --test scripts/verify-admin.mjs`, `npm run check`, `npm run build`, then `node scripts/verify-admin-integration.mjs` (isolated mock backend only).
+
+The Edge Function’s existing credential verifiers remain on Supabase. `scripts/fixtures/checkout-backend.txt` is the deployed code snapshot with all allowed digests removed, used only for isolated authorization tests. Preserve the live allowlists when updating the function; do not deploy the test fixture.

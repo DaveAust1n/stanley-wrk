@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {createHash,webcrypto} from 'node:crypto';
+import ts from 'typescript';
+const hash=value=>createHash('sha256').update(value).digest('hex');
+let source=fs.readFileSync(new URL('./fixtures/checkout-backend.txt',import.meta.url),'utf8').replace(/const TOKEN_HASHES = \[[^\]]*\];/,'const TOKEN_HASHES = ["'+hash('test-server-token')+'"];').replace(/const ADMIN_HASHES = \[[^\]]*\];/,'const ADMIN_HASHES = ["'+hash('test-admin-code')+'"];');
+const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+new vm.Script(code);
+function backend(){let handler;const calls=[];const context=vm.createContext({Request,Response,URL,URLSearchParams,AbortSignal,TextEncoder,Uint8Array,crypto:webcrypto,console:{error(){}},setTimeout,fetch:async(url,init)=>{calls.push(String(url));if(String(url).endsWith('/rpc/checkout_rate_hit'))return Response.json(true);if(String(url).endsWith('/rpc/checkout_get_order'))return Response.json({code:'ORD-ABCDEF123456',status:'paid',trackingCode:'TRK-ABCDEF123456'});if(String(url).includes('/rest/v1/checkout_orders?'))return Response.json([{fulfilment_status:'preparing',fulfilment_note:'Test-only note',customer_address:'Test address',customer_city:'Test city',customer_country:'Test country',customer_postcode:null}]);throw Error('Unexpected network request in test');},Deno:{env:{get(name){return name==='SUPABASE_URL'?'https://backend.invalid':'test-service-key'}},serve(fn){handler=fn}}});vm.runInContext(code,context);return{calls,request:(path,headers={})=>handler(new Request('https://backend.invalid/functions/v1/checkout-backend'+path,{headers}))};}
+test('deployed admin order route requires both server and admin authorization',async()=>{const b=backend();const unauth=await b.request('/admin/orders/ORD-ABCDEF123456');assert.equal(unauth.status,401);assert.equal(b.calls.length,0);const wrongAdmin=await b.request('/admin/orders/ORD-ABCDEF123456',{'x-checkout-key':'test-server-token','x-admin-key':'wrong-code'});assert.equal(wrongAdmin.status,401);assert.equal(b.calls.some(url=>url.includes('checkout_orders?')),false);});
+test('authorized admin gets order and fulfilment details without exposing server keys',async()=>{const b=backend();const response=await b.request('/admin/orders/ORD-ABCDEF123456',{'x-checkout-key':'test-server-token','x-admin-key':'test-admin-code'});assert.equal(response.status,200);const body=await response.json();assert.equal(body.fulfilmentStatus,'preparing');assert.equal(body.customer.address,'Test address');assert.equal(JSON.stringify(body).includes('test-service-key'),false);});
