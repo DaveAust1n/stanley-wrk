@@ -29,9 +29,14 @@ export default function TeslaClone() {
   const [isCompleted, setIsCompleted] = useState(false);
 
   const handleNext = () => {
+    if (selectedOption === null) {
+      alert("Please select an option first!");
+      return;
+    }
+    
     if (currentStep < GIVEAWAY_STEPS.length - 1) {
       setCurrentStep(currentStep + 1);
-      setSelectedOption(null); // Reset selection for next question
+      setSelectedOption(null); 
     } else {
       setIsCompleted(true);
     }
@@ -67,9 +72,15 @@ export default function TeslaClone() {
             <>
               {/* Main Heading - Only shows on first step */}
               {currentStep === 0 && (
-                <div className="mb-12">
+                <div className="mb-12 animate-fadeIn">
                   <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
                     Drive the Future. <br/><span className="text-red-600">For Free.</span>
                   </h1>
                   <p className="text-gray-300 text-lg md:text-xl mb-8 font-light">
-                    Join thousands of winners globally.
+                    Join thousands of winners globally. Enter our official Tesla giveaway today.
+                  </p>
+                </div>
+              )}
+
+              {/* Interactive Questionnaire */}
+              <div className="bg-zinc-900/80 backdrop-blur-md p-8 rounded-3xl border border-zinc-800 shadow-2
